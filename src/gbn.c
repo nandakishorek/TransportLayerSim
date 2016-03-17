@@ -69,13 +69,14 @@ void A_output(message)
 {
     if (nextseqnum < (base_a + winsize_a)) {
         // create packet
-        memset(&sndpkt[nextseqnum], 0, sizeof(struct pkt));
-        sndpkt[nextseqnum].seqnum = nextseqnum;
-        memcpy(&sndpkt[nextseqnum].payload, &message.data, PAYLOAD_SIZE);
-        sndpkt[nextseqnum].checksum = checksum(&sndpkt[nextseqnum]);
+        int buf_idx = nextseqnum - base_a;
+        memset(&sndpkt[buf_idx], 0, sizeof(struct pkt));
+        sndpkt[buf_idx].seqnum = nextseqnum;
+        memcpy(&sndpkt[buf_idx].payload, &message.data, PAYLOAD_SIZE);
+        sndpkt[buf_idx].checksum = checksum(&sndpkt[buf_idx]);
 
         // send packet
-        tolayer3(0, sndpkt[nextseqnum]);
+        tolayer3(0, sndpkt[buf_idx]);
 
         // if sending first packet in window, start timer
         if (base_a == nextseqnum) {
@@ -115,7 +116,7 @@ void A_timerinterrupt()
 
     // resend all the un-ACK'ed packets
     for (int i = base_a; i < nextseqnum; ++i) {
-        tolayer3(0, sndpkt[i]);
+        tolayer3(0, sndpkt[i - base_a]);
     }
 }  
 
