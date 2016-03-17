@@ -151,14 +151,14 @@ void A_output(message)
         break;
     case 1:
         // Drop message
-        fprintf(stderr, "sender: message dropped - %s\n", message.data);
+        fprintf(stderr, "sender: message dropped - %.20s\n", message.data);
         break;
     case 2:
         handle_senda_st_two_a(&message);
         break;
     case 3:
         // Drop message
-        fprintf(stderr, "sender: message dropped - %s\n", message.data);
+        fprintf(stderr, "sender: message dropped - %.20s\n", message.data);
         break;
     default:
         fprintf(stderr, "sender: invalid state\n");
