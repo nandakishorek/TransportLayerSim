@@ -5,6 +5,7 @@
 
 #define PAYLOAD_SIZE 20
 #define TIMEOUT 10.0
+#define NUM_MSGS 1500
 
 /* ******************************************************************
  ALTERNATING BIT AND GO-BACK-N NETWORK EMULATOR: VERSION 1.1  J.F.Kurose
@@ -69,14 +70,14 @@ void A_output(message)
 {
     if (nextseqnum < (base_a + winsize_a)) {
         // create packet
-        int buf_idx = nextseqnum - base_a;
-        memset(&sndpkt[buf_idx], 0, sizeof(struct pkt));
-        sndpkt[buf_idx].seqnum = nextseqnum;
-        memcpy(&sndpkt[buf_idx].payload, &message.data, PAYLOAD_SIZE);
-        sndpkt[buf_idx].checksum = checksum(&sndpkt[buf_idx]);
+        memset(&sndpkt[nextseqnum], 0, sizeof(struct pkt));
+        sndpkt[nextseqnum].seqnum = nextseqnum;
+        memcpy(&sndpkt[nextseqnum].payload, &message.data, PAYLOAD_SIZE);
+        sndpkt[nextseqnum].checksum = checksum(&sndpkt[nextseqnum]);
 
         // send packet
-        tolayer3(0, sndpkt[buf_idx]);
+        tolayer3(0, sndpkt[nextseqnum]);
+        printf("%s sent %.20s seqnum:%d\n", __func__, message.data, nextseqnum);
 
         // if sending first packet in window, start timer
         if (base_a == nextseqnum) {
@@ -85,17 +86,20 @@ void A_output(message)
 
         // increment seq num
         ++nextseqnum;
+    } else {
+        // DROP message
+        printf("%s: message dropped %.20s\n", __func__, message.data);
     }
-    // else DROP message
 }
 
 /* called from layer 3, when a packet arrives for layer 4 */
 void A_input(packet)
   struct pkt packet;
 {
-    if (!corrupt(&packet)) {
+    if (!corrupt(&packet) && packet.acknum >= base_a) {
         // slide the window forward
         base_a = packet.acknum + 1;
+        printf("%s:move base_a:%d akcnum:%d\n", __func__, base_a, packet.acknum);
 
         if (base_a == nextseqnum) {
             // all packets ACK'ed
@@ -105,6 +109,8 @@ void A_input(packet)
             stoptimer(0);
             starttimer(0, TIMEOUT);
         }
+    } else {
+        printf("%s: packet corrupt or duplicate ACK\n", __func__);
     }
 }
 
@@ -116,7 +122,8 @@ void A_timerinterrupt()
 
     // resend all the un-ACK'ed packets
     for (int i = base_a; i < nextseqnum; ++i) {
-        tolayer3(0, sndpkt[i - base_a]);
+        printf("%s: resend seqnum:%d\n", __func__, i);
+        tolayer3(0, sndpkt[i]);
     }
 }  
 
@@ -133,7 +140,7 @@ void A_init()
 
     // allocate buffers
     if (sndpkt == NULL) {
-        sndpkt = malloc(winsize_a * sizeof(struct pkt));
+        sndpkt = malloc(NUM_MSGS * sizeof(struct pkt));
     }
 }
 
@@ -146,6 +153,7 @@ void B_input(packet)
     if (!corrupt(&packet) && packet.seqnum == expseqnum) {
         // deliver packet
         tolayer5 (1, packet.payload);
+        printf("%s: delivered %.20s seqnum:%d\n", __func__, packet.payload, packet.seqnum);
 
         // create ACK packet
         memset(&packet_b, 0, sizeof(struct pkt));
@@ -153,12 +161,14 @@ void B_input(packet)
         packet_b.checksum = checksum(&packet_b);
 
         // send ACK
+        printf("%s: sent acknum:%d\n", __func__, packet_b.acknum);
         tolayer3(1, packet_b);
 
         // increment expected seqnum
         ++expseqnum;
     } else {
         // send duplicate ACK and drop this packet
+        printf("%s: sent duplicate acknum:%d\n", __func__, packet_b.acknum);
         tolayer3(1, packet_b);
     }
 }
