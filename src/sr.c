@@ -130,7 +130,7 @@ void stop_timer(int seqnum) {
             }
         }
     } else {
-        fprintf(stderr, "%s, timer queue was empty\n", __func__);
+        fprintf(stderr, "%s: timer queue was empty\n", __func__);
     }
 }
 
@@ -268,9 +268,10 @@ void A_init()
 void B_input(packet)
   struct pkt packet;
 {
-    printf("%s: seqnum %d\n", __func__, packet.seqnum);
     if (!corrupt(&packet)) {
         if (packet.seqnum >= base_b && packet.seqnum < (base_b + winsize_b)) {
+            printf("%s: packet in current window - seqnum %d\n", __func__, packet.seqnum);
+
             // create ACK
             struct pkt ackpkt;
             memset(&ackpkt, 0, sizeof(struct pkt));
@@ -279,6 +280,7 @@ void B_input(packet)
 
             // send ACK
             tolayer3(1, ackpkt);
+            printf("%s: sent acknum %d\n", __func__, packet.seqnum);
 
             if (!received[packet.seqnum]) {
                 // mark as received
@@ -306,15 +308,23 @@ void B_input(packet)
                 }
             }
         } else if (packet.seqnum >= (base_b - winsize_b) && packet.seqnum < (winsize_b - 1)) {
-             // create ACK
+            printf("%s: packet in previous window - seqnum %d\n", __func__, packet.seqnum);
+
+            // create ACK
             struct pkt ackpkt;
             memset(&ackpkt, 0, sizeof(struct pkt));
             ackpkt.acknum = packet.seqnum;
+            ackpkt.checksum = checksum(&ackpkt);
 
             // send ACK
             tolayer3(1, ackpkt);
+            printf("%s: sent acknum %d\n", __func__, packet.seqnum);
+        } else {
+            // drop packet
+            printf("%s: dropped seqnum %d\n", __func__, packet.seqnum);
         }
-        // else drop packet
+    } else {
+        printf("%s: packet corrupt\n", __func__);
     }
 }
 
