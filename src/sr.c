@@ -114,6 +114,13 @@ void stop_timer(int seqnum) {
             timeout_t *front = head;
             head = head->next;
             printf("%s: dequeued seqnum %d\n", __func__, seqnum);
+
+            if (head != NULL) {
+                // start the timer for the next seqnum in the queue
+                starttimer(0, TIMEOUT + head->start_time - get_sim_time());
+                printf("%s: started HW timer\n", __func__);
+            }
+
             free(front);
         } else {
             // search and remove from the queue
@@ -130,7 +137,7 @@ void stop_timer(int seqnum) {
             }
         }
     } else {
-        fprintf(stderr, "%s: timer queue was empty\n", __func__);
+        printf("%s: timer queue was empty\n", __func__);
     }
 }
 
@@ -241,7 +248,7 @@ void A_timerinterrupt()
 
         free(front);
     } else {
-        fprintf(stderr, "%s: timer queue was empty", __func__);
+        printf("%s: timer queue was empty", __func__);
     }
 }  
 
