@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define PAYLOAD_SIZE 20
-#define TIMEOUT 10.0
+#define TIMEOUT 12.0
 #define NUM_MSGS 1500
 
 /* ******************************************************************
@@ -29,6 +29,7 @@
 /* A's state variables*/
 static int winsize_a;
 static int base_a;
+static int end_a;
 static int nextseqnum;
 static struct pkt *sndpkt = NULL;
 
@@ -68,28 +69,30 @@ static int corrupt(struct pkt *packet) {
 void A_output(message)
   struct msg message;
 {
-    if (nextseqnum < (base_a + winsize_a)) {
-        // create packet
-        memset(&sndpkt[nextseqnum], 0, sizeof(struct pkt));
-        sndpkt[nextseqnum].seqnum = nextseqnum;
-        memcpy(&sndpkt[nextseqnum].payload, &message.data, PAYLOAD_SIZE);
-        sndpkt[nextseqnum].checksum = checksum(&sndpkt[nextseqnum]);
+    // create packet
+    memset(&sndpkt[nextseqnum], 0, sizeof(struct pkt));
+    sndpkt[nextseqnum].seqnum = nextseqnum;
+    memcpy(&sndpkt[nextseqnum].payload, &message.data, PAYLOAD_SIZE);
+    sndpkt[nextseqnum].checksum = checksum(&sndpkt[nextseqnum]);
 
+    if (nextseqnum < (base_a + winsize_a)) {
         // send packet
         tolayer3(0, sndpkt[nextseqnum]);
         printf("%s sent %.20s seqnum:%d\n", __func__, message.data, nextseqnum);
+
+        // set the end of window to end_a
+        end_a = nextseqnum;
 
         // if sending first packet in window, start timer
         if (base_a == nextseqnum) {
             starttimer(0, TIMEOUT);
         }
-
-        // increment seq num
-        ++nextseqnum;
     } else {
-        // DROP message
-        printf("%s: message dropped %.20s\n", __func__, message.data);
+        // buffer message
+        printf("%s: message buffered %.20s with seq num %d\n", __func__, message.data, nextseqnum);
     }
+    // increment seq num
+    ++nextseqnum;
 }
 
 /* called from layer 3, when a packet arrives for layer 4 */
@@ -100,6 +103,13 @@ void A_input(packet)
         // slide the window forward
         base_a = packet.acknum + 1;
         printf("%s:move base_a:%d akcnum:%d\n", __func__, base_a, packet.acknum);
+
+        // if there are any buffered messages, send them
+        for (int i = end_a + 1; (i < nextseqnum && i < (base_a + winsize_a)); ++i) {
+            printf("sending buffered message %.20s with deq num %d", sndpkt[i].payload, sndpkt[i].seqnum);
+            tolayer3(0, sndpkt[i]);
+            end_a = i;
+        }
 
         if (base_a == nextseqnum) {
             // all packets ACK'ed
