@@ -46,7 +46,6 @@ static struct pkt *sndpkt = NULL;
 /* B's state variables*/
 static int winsize_b;
 static int base_b;
-static int expseqnum;
 static struct pkt *recvpkt = NULL;
 static int *undelivered = NULL;
 static int *received = NULL;
@@ -157,7 +156,7 @@ int get_next_unacked() {
     if (min != INT_MAX) {
         return min;
     }
-    return base_a + 1;
+    return end_a + 1;
 }
 
 /**
@@ -313,7 +312,7 @@ void B_input(packet)
                 // mark for delivery
                 undelivered[packet.seqnum] = 1;
 
-                if (packet.seqnum == expseqnum) {
+                if (packet.seqnum == base_b) {
                     // in order packet
                     int i;
                     for (i = packet.seqnum; i < (base_b + winsize_b); ++i) {
@@ -325,10 +324,10 @@ void B_input(packet)
                             break;
                         }
                     }
-                    expseqnum = i;
+                    base_b = i;
                 }
             }
-        } else if (packet.seqnum >= (base_b - winsize_b) && packet.seqnum < (winsize_b - 1)) {
+        } else if (packet.seqnum >= (base_b - winsize_b) && packet.seqnum < (base_b - 1)) {
             printf("%s: packet in previous window - seqnum %d\n", __func__, packet.seqnum);
 
             // create ACK
@@ -358,7 +357,6 @@ void B_init()
 
     // set the base and expseqnum
     base_b = 1;
-    expseqnum = 1;
 
     // allocate buffers
     if (recvpkt == NULL) {
