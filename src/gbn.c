@@ -131,7 +131,7 @@ void A_timerinterrupt()
     starttimer(0, TIMEOUT);
 
     // resend all the un-ACK'ed packets
-    for (int i = base_a; i < nextseqnum; ++i) {
+    for (int i = base_a; i < end_a; ++i) {
         printf("%s: resend seqnum:%d\n", __func__, i);
         tolayer3(0, sndpkt[i]);
     }
