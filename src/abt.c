@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define PAYLOAD_SIZE 20
-#define TIMEOUT 10.0
+#define TIMEOUT 12.0
 
 /* ******************************************************************
  ALTERNATING BIT AND GO-BACK-N NETWORK EMULATOR: VERSION 1.1  J.F.Kurose
