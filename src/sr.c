@@ -5,7 +5,7 @@
 #include <limits.h>
 
 #define PAYLOAD_SIZE 20
-#define TIMEOUT 10.0
+#define TIMEOUT 12.0
 #define NUM_MSGS 1500
 
 /* ******************************************************************
@@ -39,6 +39,7 @@ timeout_t *head = NULL;
 /* A's state variables*/
 static int winsize_a;
 static int base_a;
+static int end_a;
 static int nextseqnum;
 static struct pkt *sndpkt = NULL;
 
@@ -175,13 +176,13 @@ static int corrupt(struct pkt *packet) {
 void A_output(message)
   struct msg message;
 {
-    if (nextseqnum < (base_a + winsize_a)) {
-        // create packet
-        memset(&sndpkt[nextseqnum], 0, sizeof(struct pkt));
-        sndpkt[nextseqnum].seqnum = nextseqnum;
-        memcpy(&sndpkt[nextseqnum].payload, &message.data, PAYLOAD_SIZE);
-        sndpkt[nextseqnum].checksum = checksum(&sndpkt[nextseqnum]);
+    // create packet
+    memset(&sndpkt[nextseqnum], 0, sizeof(struct pkt));
+    sndpkt[nextseqnum].seqnum = nextseqnum;
+    memcpy(&sndpkt[nextseqnum].payload, &message.data, PAYLOAD_SIZE);
+    sndpkt[nextseqnum].checksum = checksum(&sndpkt[nextseqnum]);
 
+    if (nextseqnum < (base_a + winsize_a)) {
         // send packet
         tolayer3(0, sndpkt[nextseqnum]);
         printf("%s: sent %.20s base_a:%d seqnum:%d\n", __func__, message.data, base_a, nextseqnum);
@@ -189,12 +190,15 @@ void A_output(message)
         // start the timer for this packet
         start_timer(nextseqnum);
 
-        // increment seq num
-        ++nextseqnum;
+        // set the last sent message seqnum
+        end_a = nextseqnum;
     } else {
-        // DROP message
-        printf("%s: message %.20s dropped\n", __func__, message.data);
+        // buffer message
+        printf("%s: message %.20s with seqnum %d buffered\n", __func__, message.data, nextseqnum);
     }
+
+    // increment seq num
+    ++nextseqnum;
 }
 
 /* called from layer 3, when a packet arrives for layer 4 */
@@ -211,6 +215,16 @@ void A_input(packet)
         if (base_a == packet.acknum) {
             base_a = get_next_unacked();
             printf("%s move base_a to %d\n",__func__, base_a);
+
+            // if there are buffered messages, send them
+            for (int i = end_a + 1; (i < nextseqnum && i < (base_a + winsize_a)); ++i) {
+                printf("sending buffered message %.20s with deq num %d", sndpkt[i].payload, sndpkt[i].seqnum);
+                tolayer3(0, sndpkt[i]);
+                end_a = i;
+
+                // start the timer for this packet
+                start_timer(end_a);
+            }
         }
     } else {
         printf("%s: packet corrupt or out of the window\n", __func__);
