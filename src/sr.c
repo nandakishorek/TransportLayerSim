@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <math.h>
 
 #define PAYLOAD_SIZE 20
 #define TIMEOUT 12.0
@@ -42,6 +43,10 @@ static int base_a;
 static int end_a;
 static int nextseqnum;
 static struct pkt *sndpkt = NULL;
+static float timeout = TIMEOUT;
+static float est_to;
+static float devrtt;
+static float *start_time = NULL;
 
 /* B's state variables*/
 static int winsize_b;
@@ -85,7 +90,7 @@ void start_timer(int seqnum) {
         head = new;
 
         // start the HW timer
-        starttimer(0, TIMEOUT);
+        starttimer(0, timeout);
         printf("%s: started HW timer\n", __func__);
     } else {
         timeout_t *iter = head;
@@ -117,7 +122,7 @@ void stop_timer(int seqnum) {
 
             if (head != NULL) {
                 // start the timer for the next seqnum in the queue
-                starttimer(0, TIMEOUT + head->start_time - get_sim_time());
+                starttimer(0, timeout + head->start_time - get_sim_time());
                 printf("%s: started HW timer\n", __func__);
             }
 
@@ -191,6 +196,10 @@ void A_output(message)
 
         // set the last sent message seqnum
         end_a = nextseqnum;
+
+        // start sampling
+        start_time[end_a] = get_sim_time();
+        printf("sampling seqnum %d, start time %f\n", end_a, start_time[end_a]);
     } else {
         // buffer message
         printf("%s: message %.20s with seqnum %d buffered\n", __func__, message.data, nextseqnum);
@@ -209,6 +218,17 @@ void A_input(packet)
 
         // mark packet as received by stopping the timer
         stop_timer(packet.acknum);
+
+        // stop sampling
+        if (start_time[packet.acknum] != 0.0f) {
+            est_to = (0.875f * est_to) + (0.125f * (get_sim_time() - start_time[packet.acknum]));
+            printf("estimated rtt %f, sample rtt %f\n", est_to, (get_sim_time() - start_time[packet.acknum]));
+            devrtt = (0.75f * devrtt) + 0.25f * fabs((get_sim_time() - start_time[packet.acknum]) - est_to);
+            printf("sampling before New timeout %f seqnum %d devrtt %f\n", est_to, packet.acknum, devrtt);
+            timeout = est_to + 4.0f * devrtt;
+            printf("sampling New timeout %f seqnum %d end time %f\n", timeout, packet.acknum, get_sim_time());
+            start_time[packet.acknum] = 0.0f;
+        }
 
         // if the ACK is for base_a then slide the window forward
         if (base_a == packet.acknum) {
@@ -243,6 +263,10 @@ static void timeout_callback(int seqnum) {
 
     // restart the timer
     start_timer(seqnum);
+
+    // stop and reset sampling
+    start_time[seqnum] = 0.0f;
+    printf("seqnum %d stopped sampling\n", seqnum);
 }
 
 /* called when A's timer goes off */
@@ -280,6 +304,12 @@ void A_init()
     if (sndpkt == NULL) {
         sndpkt = malloc(NUM_MSGS * sizeof(struct pkt));
     }
+
+   // allocate memory for timeout sampling
+    if (start_time == NULL) {
+        start_time = malloc(NUM_MSGS * sizeof(float));
+    }
+    memset(start_time, 0, NUM_MSGS * sizeof(float));
 }
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
