@@ -2,10 +2,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #define PAYLOAD_SIZE 20
 #define TIMEOUT 12.0
-#define NUM_MSGS 1500
+#define NUM_MSGS 1000
 
 /* ******************************************************************
  ALTERNATING BIT AND GO-BACK-N NETWORK EMULATOR: VERSION 1.1  J.F.Kurose
@@ -32,6 +33,10 @@ static int base_a;
 static int end_a;
 static int nextseqnum;
 static struct pkt *sndpkt = NULL;
+static float timeout = TIMEOUT;
+static float est_to;
+static float devrtt;
+static float *start_time = NULL;
 
 /* B's state variables*/
 static int expseqnum;
@@ -85,8 +90,10 @@ void A_output(message)
 
         // if sending first packet in window, start timer
         if (base_a == nextseqnum) {
-            starttimer(0, TIMEOUT);
+            starttimer(0, timeout);
         }
+
+        start_time[nextseqnum] = get_sim_time();
     } else {
         // buffer message
         printf("%s: message buffered %.20s with seq num %d\n", __func__, message.data, nextseqnum);
@@ -104,11 +111,22 @@ void A_input(packet)
         base_a = packet.acknum + 1;
         printf("%s:move base_a:%d akcnum:%d\n", __func__, base_a, packet.acknum);
 
+        if (start_time[packet.acknum] != 0.0f) {
+            est_to = (0.875f * est_to) + (0.125f * (get_sim_time() - start_time[packet.acknum]));
+            printf("estimated rtt %f, sample rtt %f\n", est_to, (get_sim_time() - start_time[packet.acknum]));
+            devrtt = (0.75f * devrtt) + 0.25f * fabs((get_sim_time() - start_time[packet.acknum]) - est_to);
+            printf("sampling before New timeout %f seqnum %d devrtt %f\n", est_to, packet.acknum, devrtt);
+            timeout = est_to + 4.0f * devrtt;
+            printf("sampling New timeout %f seqnum %d end time %f\n", timeout, packet.acknum, get_sim_time());
+            start_time[packet.acknum] = 0.0f;
+        }
+
         // if there are any buffered messages, send them
         for (int i = end_a + 1; (i < nextseqnum && i < (base_a + winsize_a)); ++i) {
             printf("sending buffered message %.20s with deq num %d", sndpkt[i].payload, sndpkt[i].seqnum);
             tolayer3(0, sndpkt[i]);
             end_a = i;
+            start_time[i] = get_sim_time();
         }
 
         if (base_a == nextseqnum) {
@@ -131,9 +149,10 @@ void A_timerinterrupt()
     starttimer(0, TIMEOUT);
 
     // resend all the un-ACK'ed packets
-    for (int i = base_a; i < end_a; ++i) {
+    for (int i = base_a; i <= end_a; ++i) {
         printf("%s: resend seqnum:%d\n", __func__, i);
         tolayer3(0, sndpkt[i]);
+        start_time[i] = 0.0f;
     }
 }  
 
@@ -152,6 +171,12 @@ void A_init()
     if (sndpkt == NULL) {
         sndpkt = malloc(NUM_MSGS * sizeof(struct pkt));
     }
+
+    // allocate memory for timeout sampling
+    if (start_time == NULL) {
+        start_time = malloc(NUM_MSGS * sizeof(float));
+    }
+    memset(start_time, 0, NUM_MSGS * sizeof(float));
 }
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
